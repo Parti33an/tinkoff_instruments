@@ -1,3 +1,6 @@
+#Пример получения брокерского отчета по всем счетам
+#ВНИМАНИЕ: GenerateBrokerReportRequest не позволяет получить отчет за интервал более 31 дня, нужный интервал набирать кусками
+
 from mytoken import token
 import asyncio
 from datetime import datetime
@@ -29,8 +32,6 @@ async def main():
                 print(f"Счет {count.name} недоступен!")
         
         for count in access_counts:   
-            #r = client.operations.get_positions(account_id=count.id)
-            #print(*r.money, sep='\n')
             request = GenerateBrokerReportRequest( account_id = count.id, from_= datetime(2022, 8, 1), to = datetime.now())
             report = await client.operations.get_broker_report(
                         generate_broker_report_request = request 
