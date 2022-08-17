@@ -76,24 +76,9 @@ class Account:
         :param p:
         :return:
         """
-        
-        instruments: InstrumentsService = self.client.instruments
-        ins=None
-
-        if(o.figi):
-            ins = instruments.get_instrument_by(id_type=InstrumentIdType.INSTRUMENT_ID_TYPE_FIGI, id = o.figi).instrument
-            
-        ticker = getattr(ins, 'ticker' , 'RUB')
-        name = getattr(ins, 'name' , 'Рубль')
-        if o.instrument_type == 'currency':
-            #print(ins)
-            self.currency[o.figi]={'ticker':ticker, 'name':name, 'instrument_type': o.instrument_type, 'currency': o.currency}
-        else:
-            self.instruments[o.figi]={'ticker':ticker, 'name':name, 'instrument_type': o.instrument_type, 'currency': o.currency}
-        
-        #ins = self.currency.get(o.figi) or self.instruments.get(o.figi)
-        #ticker = ins['ticker']
-        #name = ins['name'] 
+        ins = self.currency.get(o.figi) or self.instruments.get(o.figi)
+        ticker = ins['ticker']
+        name = ins['name'] 
 
         r = {
             'date': o.date,
@@ -109,9 +94,6 @@ class Account:
             'payment': self._cast_money(o.payment, False),
             'price': self._cast_money(o.price, False),
         }
-
-        #self.instrumets[]
-
         return r
     
     def _cast_money(self, v, to_rub=True):
@@ -133,8 +115,8 @@ class Account:
         :param account_id:
         :return:
         """
-        #data=[]
-        #instruments: InstrumentsService = self.client.instruments
+        data=[]
+        instruments: InstrumentsService = self.client.instruments
         
         r: OperationsResponse = self.client.operations.get_operations(
             account_id=self.account_id,
@@ -143,10 +125,11 @@ class Account:
         )
         
         if len(r.operations) < 1: return None
-        '''
+        
         for p in r.operations:
             ins=None
             if p.state == OperationState.OPERATION_STATE_EXECUTED:
+                
                 if self.currency.get(p.figi) or self.instruments.get(p.figi):
                     pass
                 else:
@@ -159,13 +142,11 @@ class Account:
                         self.currency[p.figi]={'ticker':ticker, 'name':name, 'instrument_type': p.instrument_type, 'currency': p.currency}
                     else:
                         self.instruments[p.figi]={'ticker':ticker, 'name':name, 'instrument_type': p.instrument_type, 'currency': p.currency}
-
+                
                 record = self._operation_todict(p)
-            data.append(record)
-        self.instruments.pop('')
-        '''
-        df = pd.DataFrame([self._operation_todict(p) for p in r.operations if p.state == OperationState.OPERATION_STATE_EXECUTED])
-        #df = pd.DataFrame(data)
+                data.append(record)
+                #df = pd.DataFrame([self._operation_todict(p) for p in r.operations if p.state == OperationState.OPERATION_STATE_EXECUTED])
+        df = pd.DataFrame(data)
         # https://www.datasciencelearner.com/numpy-datetime64-to-datetime-implementation/
         df["date"]=pd.to_datetime(df.date).dt.tz_localize(None)
         return df
@@ -245,16 +226,21 @@ class Account:
         return self.data[(self.data['date'] >= from_) & (self.data['date'] < to_) 
                          & ((self.data['otype']==OperationType.OPERATION_TYPE_DIVIDEND) )][['date','payment']]
    
-    def get_position_by_figi(self, figi , to_ : datetime = datetime.utcnow() ):
+    def get_instrument_by_figi(self, figi , to_ : datetime = datetime.utcnow() ):
         to_ = np.datetime64(to_)
         buy = self.data[(self.data['figi']==figi) & (self.data['date'] < to_) & (self.data['otype']==OperationType.OPERATION_TYPE_BUY)]['quantity'].sum()
         sell = self.data[(self.data['figi']==figi) & (self.data['date'] < to_) & (self.data['otype']==OperationType.OPERATION_TYPE_SELL)]['quantity'].sum()
         return buy - sell
     
+    def get_currency_by_figi(self, figi , to_ : datetime = datetime.utcnow()):
+        to_ = np.datetime64(to_)
+        currency = self.currency[figi]['ticker'][:3].lower()
+        return self.get_instrument_by_figi(figi , to_ =to_ ) + self.data[self.data.currency == currency]['payment'].sum()
+    
     def get_portfel(self, to_ : datetime = datetime.utcnow() ):
         portfel = []
         for figi in self.instruments:
-            amount = self.get_position_by_figi(figi , to_ = to_ )
+            amount = self.get_instrument_by_figi(figi , to_ = to_ )
             if amount!=0:
                 r = {
                     'instrument_type': self.instruments[figi] ['instrument_type'],
@@ -267,7 +253,7 @@ class Account:
                 portfel.append(r)
 
         for figi in self.currency:
-            amount = self.get_position_by_figi(figi , to_ = to_ ) # + self.data[(self.data.currency == self.currency['currency'])]['payment'].sum()
+            amount = self.get_currency_by_figi(figi , to_ = to_ ) # + self.data[(self.data.currency == self.currency['currency'])]['payment'].sum()
             if amount!=0:
                 r = {
                     'instrument_type': self.currency[figi] ['instrument_type'],
